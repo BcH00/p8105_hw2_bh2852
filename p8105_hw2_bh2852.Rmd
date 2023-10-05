@@ -1,0 +1,263 @@
+---
+title: "p8105_hw2_bh2852"
+author: "Beicheng Huang"
+date: "2023-10-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading libraries
+
+```{r load_libraries}
+library(tidyverse)
+library(readxl)
+```
+### Problem 1
+
+We clean the 538 `pols` data, which provides information on the number
+of national politicians who are democratic or republican at any given
+time. There are some values for which `prez_gop` is `2` – these are
+months in which Ford became President following Nixon’s resignation. In
+the new `president` variable created as part of our data cleaning, we
+code these as `gop` (same as values when `prez_gop` is `1`).
+
+```{r}
+month_df = 
+  tibble(
+    month_num = 1:12,
+    month_abb = month.abb,
+    month = month.name
+  )
+
+pols = 
+  read_csv("./data/fivethirtyeight_datasets/pols-month.csv") |>
+  separate(mon, into = c("year", "month_num", "day"), convert = TRUE) |>
+  mutate(
+    president = recode(prez_gop, "0" = "dem", "1" = "gop", "2" = "gop")) |>
+  left_join(x = _, y = month_df) |> 
+  select(year, month, everything(), -day, -starts_with("prez")) 
+```
+
+We also clean the 538 `snp` data, which contains information related to
+Standard & Poor’s stock market index.
+
+``` {r}
+snp = 
+  read_csv(
+    "./data/fivethirtyeight_datasets/snp.csv",
+    col_types = cols(date = col_date(format = "%m/%d/%y"))) |>
+  separate(date, into = c("year", "month_num", "day"), convert = TRUE) |>
+  mutate(
+    year = if_else(year > 2023, year - 100, year)) |> 
+  left_join(x = _, y = month_df) |> 
+  select(year, month, close) 
+```
+
+Finally, we tidy the `unemployment` data so that it can be merged with
+the `pols` and `snp` datasets.
+
+``` {r}
+unemployment = 
+  read_csv("./data/fivethirtyeight_datasets/unemployment.csv") |>
+  rename(year = Year) |>
+  pivot_longer(
+    Jan:Dec, 
+    names_to = "month_abb",
+    values_to = "unemployment"
+  ) |> 
+  left_join(x = _, y = month_df) |> 
+  select(year, month, unemployment)
+```
+
+Merge the three datasets
+
+``` {r}
+data_538 = 
+  left_join(pols, snp) |>
+  left_join(x = _, y = unemployment)
+
+str(data_538)
+## tibble [822 × 13] (S3: tbl_df/tbl/data.frame)
+##  $ year        : num [1:822] 1947 1947 1947 1947 1947 ...
+##  $ month       : chr [1:822] "January" "February" "March" "April" ...
+##  $ month_num   : int [1:822] 1 2 3 4 5 6 7 8 9 10 ...
+##  $ gov_gop     : num [1:822] 23 23 23 23 23 23 23 23 23 23 ...
+##  $ sen_gop     : num [1:822] 51 51 51 51 51 51 51 51 51 51 ...
+##  $ rep_gop     : num [1:822] 253 253 253 253 253 253 253 253 253 253 ...
+##  $ gov_dem     : num [1:822] 23 23 23 23 23 23 23 23 23 23 ...
+##  $ sen_dem     : num [1:822] 45 45 45 45 45 45 45 45 45 45 ...
+##  $ rep_dem     : num [1:822] 198 198 198 198 198 198 198 198 198 198 ...
+##  $ president   : chr [1:822] "dem" "dem" "dem" "dem" ...
+##  $ month_abb   : chr [1:822] "Jan" "Feb" "Mar" "Apr" ...
+##  $ close       : num [1:822] NA NA NA NA NA NA NA NA NA NA ...
+##  $ unemployment: num [1:822] NA NA NA NA NA NA NA NA NA NA ...
+```
+
+
+## Problem 2
+
+Import and Clean Mr Trash Wheel
+```{r import mr}
+# import data from excel with specify sheet number = "Mr. Trash Wheel", omit column with notes
+mr_trash_wheel = read_excel("202309 Trash Wheel Collection Data.xlsx", sheet = "Mr. Trash Wheel", range = cell_cols("A2:N586")) %>%
+#clean name
+  janitor::clean_names() %>% 
+# omit rows do not include dumpster-specific data
+  drop_na(dumpster) %>% 
+# create new home powered variable
+  mutate(homes_powered = weight_tons*500/30,name = "Mr.TrashWheel",year = as.numeric(year)) %>% 
+  relocate(name,dumpster,year,month) 
+
+mr_trash_wheel
+```
+
+```{r import prof}
+professor_trash_wheel = read_xlsx( 
+  "202309 Trash Wheel Collection Data.xlsx",
+  cell_cols("A2:M108"),
+  sheet = "Professor Trash Wheel") %>% 
+  janitor::clean_names() %>% 
+  drop_na(dumpster) %>% 
+  mutate(homes_powered = weight_tons*500/30,
+         name = "Prof.TrashWheel") %>% 
+  relocate(name,dumpster,year,month) 
+
+professor_trash_wheel
+```
+
+```{r import gwynnda}
+gwynnda_trash_wheel = read_xlsx( 
+  "202309 Trash Wheel Collection Data.xlsx",
+  cell_cols("A2:L157"),
+  sheet = "Gwynnda Trash Wheel") %>% 
+  janitor::clean_names() %>% 
+  drop_na(dumpster) %>% 
+  mutate(homes_powered = weight_tons*500/30,
+         name = "Gwynnda.TrashWheel") %>% 
+  relocate(name,dumpster,year,month) 
+
+gwynnda_trash_wheel
+```
+
+
+```{r Combine}
+Combined_dataset <- bind_rows(mr_trash_wheel, professor_trash_wheel, gwynnda_trash_wheel)
+nrow(Combined_dataset)
+ncol(Combined_dataset)
+
+Combined_dataset
+```
+
+There are 845 observations and 15 variables in the Combined dataset.
+
+```{r P.total weightton}
+filter(Combined_dataset, name == "Prof.TrashWheel") %>% 
+  pull(weight_tons) %>% 
+  sum()
+```
+The total weighttons for professor trash wheel is 216.26
+
+```{r Gwynnda.Cigaratte_butts}
+filter(Combined_dataset, name == "Gwynnda.TrashWheel", year == 2021, month == "July")%>% 
+  pull(cigarette_butts)%>% 
+  sum()
+```
+The total number of cigarette butts collected by Gwynnda in July of 2021 is 16300
+
+
+Key Variables:
+name:identifier for the Trash Wheel (Mr.TrashWheel, Prof.Trash Wheel, or Gwynnda.TrashWheel).
+date: The date of data collection.
+homes_powered: The number of homes powered, if applicable.
+total_weight: The total weight of trash collected.
+cigarette_butts: The count of cigarette butts collected.
+
+
+
+## Problem 3
+
+Import,clean the baseline data
+```{r}
+baseline_data = read.csv(file = "MCI_baseline.csv", skip=1, na = c(".")) %>%
+  janitor::clean_names() %>%
+  mutate(sex = factor(sex, labels = c("Female", "Male")),        
+         apoe4 = factor(apoe4, labels = c("APOE4 non-carrier", "APOE4 carrier")),        
+         age_at_onset = as.numeric(age_at_onset))
+
+baseline_data
+```
+Exclude participant with MCI before enrollment
+```{r}
+filtered_data = baseline_data %>%
+  filter(age_at_onset - current_age > 0 | is.na(age_at_onset)) 
+
+filtered_data
+```
+Exclude participant who did not develop MCI
+```{r}
+participated_data = filtered_data %>%
+  filter(age_at_onset - current_age > 0) %>% 
+  drop_na(age_at_onset)
+    
+participated_data
+```
+
+
+Calculate mean of age in final participated data
+```{r}
+round(mean(filtered_data$current_age, na.rm=TRUE),digits = 0)
+
+```
+Calculate the percentage of women who are APOE4 carrier
+```{r}
+nrow(filter(filtered_data, sex == "Female" & apoe4 == "APOE4 carrier")) / nrow(filter(filtered_data, sex == "Female"))
+```
+
+Before cleaning, there are 479 participants.In the filtered dataset(exclude participant who developed MCI before enrollment), there are 93 participants who developed MCI(those non-qualified were excluded) in the final participated dataset. 
+By using round(mean(filtered_data$current_age, na.rm=TRUE),digits = 0), we have the average MCI onset age as 65. 
+By using nrow(filter(filtered_data, sex == "Female" & apoe4 == "APOE4 carrier")) / nrow(filter(filtered_data, sex == "Female")), we get there are 30% of female participants having MCI.
+
+
+##Amyloid data load 
+
+```{r amyloid data loading}
+amyloid_data = read.csv(file = "mci_amyloid.csv", skip=1) %>%
+  janitor::clean_names() %>%
+  pivot_longer(baseline:time_8,
+               names_prefix="time_",
+               names_to="years_since_diagnosed",
+               values_to="apoe4_42/40 ratio") %>%
+  mutate(years_since_diagnosed=replace(years_since_diagnosed, years_since_diagnosed=="baseline", 0)) %>%
+  mutate(years_since_diagnosed=as.numeric(years_since_diagnosed))
+
+amyloid_data
+```
+The amyloid dataset contains 5 observations for all 483 participants which results in 2435 observations.
+
+
+```{r Finding unique ID}
+baseline <- filtered_data %>%
+  anti_join(amyloid_data, by = c("id" = "study_id")) %>%
+  select(id)
+
+amyloid <- amyloid_data %>%
+  anti_join(filtered_data, by = c("study_id" = "id")) %>%
+  select(study_id)
+```
+There are 8 observations in baseline dataset with unique ID.
+There are total of 80 observations in amyloid which consist of 16 unique id with 5 observations each.
+
+```{r Combining datasets where ID are presented in both sets}
+Combined_MCI_amy = 
+  inner_join(filtered_data,amyloid_data, by = c("id" = "study_id"))
+```
+After combining by ID presented in both sets, there are a total of 2355 observations which consists of 471 participants(ID presented in both sets) with 5 data entries each.
+
+##Export
+```{r}
+# Export the result as a CSV
+write_csv(Combined_MCI_amy, "./Result.csv")
+```
